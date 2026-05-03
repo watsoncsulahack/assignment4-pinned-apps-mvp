@@ -28,6 +28,7 @@ const clearPinsBtn = document.getElementById("clearPins");
 let openMenuEl = null;
 let dragEntityKey = null;
 let pendingGroupFlashKey = null;
+let domPreviewDirty = false;
 
 function appById(id) {
   return APPS.find(a => a.id === id) || null;
@@ -210,8 +211,56 @@ function createGroupMenu(entity, pins, groups, rerender) {
 
 function clearDropClasses() {
   document.querySelectorAll(".app-card").forEach(c => {
-    c.classList.remove("drop-before", "drop-after", "drop-group");
+    c.classList.remove("drop-group");
   });
+}
+
+function findCardByKey(key) {
+  return [...document.querySelectorAll(".app-card")]
+    .find(card => card.dataset.entityKey === key) || null;
+}
+
+function previewReorderInDOM(draggedKey, targetKey, placement) {
+  const draggedCard = findCardByKey(draggedKey);
+  const targetCard = findCardByKey(targetKey);
+  if (!draggedCard || !targetCard || draggedCard === targetCard) return false;
+
+  const parent = draggedCard.parentElement;
+  if (!parent || parent !== targetCard.parentElement) return false;
+
+  if (placement === "before" && draggedCard.nextElementSibling === targetCard) return false;
+  if (placement === "after" && targetCard.nextElementSibling === draggedCard) return false;
+
+  const prevRects = captureCardRects();
+  if (placement === "after") parent.insertBefore(draggedCard, targetCard.nextSibling);
+  else parent.insertBefore(draggedCard, targetCard);
+  animateReflow(prevRects);
+  return true;
+}
+
+function persistOrderFromDOM() {
+  const groups = getGroups();
+  const seen = new Set();
+  const next = [];
+  const cards = [...pinnedGrid.children, ...allAppsGrid.children];
+
+  cards.forEach(card => {
+    const key = card.dataset.entityKey;
+    if (!key) return;
+    const ids = keyToAppIds(key, groups);
+    ids.forEach(id => {
+      if (!seen.has(id)) {
+        seen.add(id);
+        next.push(id);
+      }
+    });
+  });
+
+  getOrder().forEach(id => {
+    if (!seen.has(id)) next.push(id);
+  });
+
+  saveOrder(next);
 }
 
 function reorderByEntity(draggedKey, targetKey, placement = "before") {
@@ -337,12 +386,18 @@ function makeCard(entity, pins, groups, qActive, rerender) {
 
   card.addEventListener("dragstart", (e) => {
     dragEntityKey = entity.key;
+    domPreviewDirty = false;
     e.dataTransfer.setData("text/plain", entity.key);
     closeMenu();
     card.classList.add("dragging");
   });
 
   card.addEventListener("dragend", () => {
+    if (domPreviewDirty) {
+      persistOrderFromDOM();
+      domPreviewDirty = false;
+      rerender();
+    }
     dragEntityKey = null;
     clearDropClasses();
     card.classList.remove("dragging");
@@ -353,14 +408,21 @@ function makeCard(entity, pins, groups, qActive, rerender) {
     const draggedEntity = getEntityFromKey(dragEntityKey, getGroups());
     const intent = computeDropIntent(entity, draggedEntity, e);
     e.preventDefault();
+
     clearDropClasses();
-    if (intent === "before") card.classList.add("drop-before");
-    else if (intent === "after") card.classList.add("drop-after");
-    else if (intent === "group") card.classList.add("drop-group");
+
+    if (intent === "group") {
+      card.classList.add("drop-group");
+      return;
+    }
+
+    if ((intent === "before" || intent === "after") && previewReorderInDOM(dragEntityKey, entity.key, intent)) {
+      domPreviewDirty = true;
+    }
   });
 
   card.addEventListener("dragleave", () => {
-    card.classList.remove("drop-before", "drop-after", "drop-group");
+    card.classList.remove("drop-group");
   });
 
   card.addEventListener("drop", (e) => {
@@ -376,23 +438,25 @@ function makeCard(entity, pins, groups, qActive, rerender) {
 
     if (intent === "group" && draggedEntity.type === "app") {
       if (entity.type === "app") {
-        const ok = confirm(`Create group with ${draggedEntity.app.name} and ${entity.app.name}?`);
-        if (ok) {
-          reorderByEntity(dragEntityKey, entity.key, "after");
-          createGroupFromPair(entity.app.id, draggedEntity.app.id);
-          rerender();
-        }
+        persistOrderFromDOM();
+        createGroupFromPair(entity.app.id, draggedEntity.app.id);
+        domPreviewDirty = false;
+        rerender();
         return;
       }
 
       if (entity.type === "group") {
+        persistOrderFromDOM();
         addAppToExistingGroup(draggedEntity.app.id, entity.group.id);
+        domPreviewDirty = false;
         rerender();
         return;
       }
     }
 
-    reorderByEntity(dragEntityKey, entity.key, intent === "after" ? "after" : "before");
+    if (domPreviewDirty) persistOrderFromDOM();
+    else reorderByEntity(dragEntityKey, entity.key, intent === "after" ? "after" : "before");
+    domPreviewDirty = false;
     rerender();
   });
 

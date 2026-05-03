@@ -80,9 +80,6 @@ body { margin: 0; font-family: Segoe UI, system-ui, sans-serif; background: var(
 }
 
 .app-card.dragging { opacity: 0.55; }
-.app-card.drag-over { outline: 2px dashed var(--accent); }
-.app-card.drop-before { box-shadow: inset 4px 0 0 #2563eb; }
-.app-card.drop-after { box-shadow: inset -4px 0 0 #2563eb; }
 .app-card.drop-group {
   outline: 2px solid #22c55e;
   background: #f0fdf4;
