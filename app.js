@@ -25,10 +25,28 @@ const pinnedEmpty = document.getElementById("pinnedEmpty");
 const searchInput = document.getElementById("searchInput");
 const clearPinsBtn = document.getElementById("clearPins");
 
+const folderOverlay = document.getElementById("folderOverlay");
+const folderTitle = document.getElementById("folderTitle");
+const folderApps = document.getElementById("folderApps");
+const closeFolderBtn = document.getElementById("closeFolder");
+const toastEl = document.getElementById("toast");
+
 let openMenuEl = null;
 let dragEntityKey = null;
 let pendingGroupFlashKey = null;
 let domPreviewDirty = false;
+let openFolderGroupId = null;
+let toastTimer = null;
+
+const touchState = {
+  active: false,
+  pressTimer: null,
+  startX: 0,
+  startY: 0,
+  draggedKey: null,
+  lastTargetKey: null,
+  lastIntent: null
+};
 
 function appById(id) {
   return APPS.find(a => a.id === id) || null;
@@ -141,6 +159,57 @@ function closeMenu() {
   openMenuEl = null;
 }
 
+function showToast(text) {
+  if (!toastEl) return;
+  toastEl.textContent = text;
+  toastEl.classList.remove("hidden");
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toastEl.classList.add("hidden"), 1300);
+}
+
+function openFolder(groupId) {
+  openFolderGroupId = groupId;
+  renderFolderOverlay();
+}
+
+function closeFolder() {
+  openFolderGroupId = null;
+  renderFolderOverlay();
+}
+
+function renderFolderOverlay() {
+  if (!folderOverlay || !folderApps || !folderTitle) return;
+  if (!openFolderGroupId) {
+    folderOverlay.classList.add("hidden");
+    return;
+  }
+
+  const groups = getGroups();
+  const group = groups.find(g => g.id === openFolderGroupId);
+  if (!group) {
+    folderOverlay.classList.add("hidden");
+    openFolderGroupId = null;
+    return;
+  }
+
+  folderTitle.textContent = group.name;
+  folderApps.innerHTML = "";
+
+  (group.appIds || []).map(appById).filter(Boolean).forEach(app => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "folder-app-btn";
+    btn.textContent = app.name;
+    btn.addEventListener("click", () => {
+      showToast(`Opening ${app.name}`);
+      closeFolder();
+    });
+    folderApps.appendChild(btn);
+  });
+
+  folderOverlay.classList.remove("hidden");
+}
+
 function buildFolderPreview(group) {
   const box = document.createElement("div");
   box.className = "folder-preview";
@@ -168,11 +237,8 @@ function createAppMenu(entity, pins, groups, rerender) {
   pinBtn.onclick = () => {
     const nextPins = getPins();
     if (isPinned) {
-      if (inGroup) {
-        alert("This app is in a group. Ungroup it before unpinning.");
-      } else {
-        nextPins.delete(app.id);
-      }
+      if (inGroup) alert("This app is in a group. Ungroup it before unpinning.");
+      else nextPins.delete(app.id);
     } else {
       nextPins.add(app.id);
     }
@@ -210,14 +276,38 @@ function createGroupMenu(entity, pins, groups, rerender) {
 }
 
 function clearDropClasses() {
-  document.querySelectorAll(".app-card").forEach(c => {
-    c.classList.remove("drop-group");
-  });
+  document.querySelectorAll(".app-card").forEach(c => c.classList.remove("drop-group"));
 }
 
 function findCardByKey(key) {
-  return [...document.querySelectorAll(".app-card")]
-    .find(card => card.dataset.entityKey === key) || null;
+  return [...document.querySelectorAll(".app-card")].find(c => c.dataset.entityKey === key) || null;
+}
+
+function captureCardRects() {
+  const map = new Map();
+  document.querySelectorAll(".app-card").forEach(card => {
+    const key = card.dataset.entityKey;
+    if (key) map.set(key, card.getBoundingClientRect());
+  });
+  return map;
+}
+
+function animateReflow(prevRects) {
+  const cards = [...document.querySelectorAll(".app-card")];
+  cards.forEach(card => {
+    const prev = prevRects.get(card.dataset.entityKey);
+    if (!prev) return;
+    const now = card.getBoundingClientRect();
+    const dx = prev.left - now.left;
+    const dy = prev.top - now.top;
+    if (!dx && !dy) return;
+    card.style.transition = "none";
+    card.style.transform = `translate(${dx}px, ${dy}px)`;
+    requestAnimationFrame(() => {
+      card.style.transition = "transform 220ms ease";
+      card.style.transform = "";
+    });
+  });
 }
 
 function previewReorderInDOM(draggedKey, targetKey, placement) {
@@ -247,8 +337,7 @@ function persistOrderFromDOM() {
   cards.forEach(card => {
     const key = card.dataset.entityKey;
     if (!key) return;
-    const ids = keyToAppIds(key, groups);
-    ids.forEach(id => {
+    keyToAppIds(key, groups).forEach(id => {
       if (!seen.has(id)) {
         seen.add(id);
         next.push(id);
@@ -256,10 +345,7 @@ function persistOrderFromDOM() {
     });
   });
 
-  getOrder().forEach(id => {
-    if (!seen.has(id)) next.push(id);
-  });
-
+  getOrder().forEach(id => { if (!seen.has(id)) next.push(id); });
   saveOrder(next);
 }
 
@@ -299,13 +385,8 @@ function nextGroupName(groups) {
 function createGroupFromPair(targetAppId, draggedAppId) {
   const groups = getGroups();
   if (findGroupByAppId(groups, targetAppId) || findGroupByAppId(groups, draggedAppId)) return;
-
   const groupId = `g_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-  groups.push({
-    id: groupId,
-    name: nextGroupName(groups),
-    appIds: [targetAppId, draggedAppId]
-  });
+  groups.push({ id: groupId, name: nextGroupName(groups), appIds: [targetAppId, draggedAppId] });
   saveGroups(groups);
   pendingGroupFlashKey = `group:${groupId}`;
 }
@@ -323,8 +404,7 @@ function addAppToExistingGroup(draggedAppId, targetGroupId) {
     const i = nextOrder.indexOf(id);
     if (i > lastIndex) lastIndex = i;
   }
-  const insertAt = lastIndex >= 0 ? lastIndex + 1 : nextOrder.length;
-  nextOrder.splice(insertAt, 0, draggedAppId);
+  nextOrder.splice(lastIndex >= 0 ? lastIndex + 1 : nextOrder.length, 0, draggedAppId);
   saveOrder(nextOrder);
 
   g.appIds = [...(g.appIds || []), draggedAppId];
@@ -335,34 +415,7 @@ function addAppToExistingGroup(draggedAppId, targetGroupId) {
 function ungroupById(groupId) {
   const groups = getGroups().filter(g => g.id !== groupId);
   saveGroups(groups);
-}
-
-function captureCardRects() {
-  const map = new Map();
-  document.querySelectorAll(".app-card").forEach(card => {
-    const key = card.dataset.entityKey;
-    if (key) map.set(key, card.getBoundingClientRect());
-  });
-  return map;
-}
-
-function animateReflow(prevRects) {
-  const cards = [...document.querySelectorAll(".app-card")];
-  cards.forEach(card => {
-    const key = card.dataset.entityKey;
-    const prev = prevRects.get(key);
-    if (!prev) return;
-    const now = card.getBoundingClientRect();
-    const dx = prev.left - now.left;
-    const dy = prev.top - now.top;
-    if (!dx && !dy) return;
-    card.style.transition = "none";
-    card.style.transform = `translate(${dx}px, ${dy}px)`;
-    requestAnimationFrame(() => {
-      card.style.transition = "transform 220ms ease";
-      card.style.transform = "";
-    });
-  });
+  if (openFolderGroupId === groupId) openFolderGroupId = null;
 }
 
 function computeDropIntent(targetEntity, draggedEntity, event) {
@@ -374,8 +427,47 @@ function computeDropIntent(targetEntity, draggedEntity, event) {
     if (x > 0.85) return "after";
     if (targetEntity.type === "app" || targetEntity.type === "group") return "group";
   }
-
   return x < 0.5 ? "before" : "after";
+}
+
+function executeDropAction(draggedKey, targetEntity, intent, rerender) {
+  const groupsNow = getGroups();
+  const draggedEntity = getEntityFromKey(draggedKey, groupsNow);
+  if (!draggedEntity) return;
+
+  clearDropClasses();
+
+  if (intent === "group" && draggedEntity.type === "app") {
+    if (targetEntity.type === "app") {
+      persistOrderFromDOM();
+      createGroupFromPair(targetEntity.app.id, draggedEntity.app.id);
+      domPreviewDirty = false;
+      rerender();
+      return;
+    }
+
+    if (targetEntity.type === "group") {
+      persistOrderFromDOM();
+      addAppToExistingGroup(draggedEntity.app.id, targetEntity.group.id);
+      domPreviewDirty = false;
+      rerender();
+      return;
+    }
+  }
+
+  if (domPreviewDirty) persistOrderFromDOM();
+  else reorderByEntity(draggedKey, targetEntity.key, intent === "after" ? "after" : "before");
+  domPreviewDirty = false;
+  rerender();
+}
+
+function clearTouchState() {
+  if (touchState.pressTimer) clearTimeout(touchState.pressTimer);
+  touchState.pressTimer = null;
+  touchState.active = false;
+  touchState.draggedKey = null;
+  touchState.lastTargetKey = null;
+  touchState.lastIntent = null;
 }
 
 function makeCard(entity, pins, groups, qActive, rerender) {
@@ -410,7 +502,6 @@ function makeCard(entity, pins, groups, qActive, rerender) {
     e.preventDefault();
 
     clearDropClasses();
-
     if (intent === "group") {
       card.classList.add("drop-group");
       return;
@@ -421,44 +512,110 @@ function makeCard(entity, pins, groups, qActive, rerender) {
     }
   });
 
-  card.addEventListener("dragleave", () => {
-    card.classList.remove("drop-group");
-  });
+  card.addEventListener("dragleave", () => card.classList.remove("drop-group"));
 
   card.addEventListener("drop", (e) => {
     if (!dragEntityKey || qActive || dragEntityKey === entity.key) return;
     e.preventDefault();
-
-    const groupsNow = getGroups();
-    const draggedEntity = getEntityFromKey(dragEntityKey, groupsNow);
+    const draggedEntity = getEntityFromKey(dragEntityKey, getGroups());
     if (!draggedEntity) return;
-
     const intent = computeDropIntent(entity, draggedEntity, e);
-    clearDropClasses();
+    executeDropAction(dragEntityKey, entity, intent, rerender);
+  });
 
-    if (intent === "group" && draggedEntity.type === "app") {
-      if (entity.type === "app") {
-        persistOrderFromDOM();
-        createGroupFromPair(entity.app.id, draggedEntity.app.id);
-        domPreviewDirty = false;
-        rerender();
-        return;
-      }
+  // Mobile touch-and-hold drag
+  card.addEventListener("pointerdown", (e) => {
+    if (e.pointerType !== "touch" || qActive) return;
+    if (e.target.closest(".menu-wrap") || e.target.closest(".ungroup-btn")) return;
 
-      if (entity.type === "group") {
-        persistOrderFromDOM();
-        addAppToExistingGroup(draggedEntity.app.id, entity.group.id);
-        domPreviewDirty = false;
-        rerender();
-        return;
-      }
+    touchState.startX = e.clientX;
+    touchState.startY = e.clientY;
+    touchState.draggedKey = entity.key;
+
+    touchState.pressTimer = setTimeout(() => {
+      touchState.active = true;
+      dragEntityKey = entity.key;
+      domPreviewDirty = false;
+      closeMenu();
+      const draggedCard = findCardByKey(entity.key);
+      if (draggedCard) draggedCard.classList.add("touch-dragging");
+    }, 230);
+  });
+
+  card.addEventListener("pointermove", (e) => {
+    if (e.pointerType !== "touch") return;
+
+    if (!touchState.active) {
+      const dx = Math.abs(e.clientX - touchState.startX);
+      const dy = Math.abs(e.clientY - touchState.startY);
+      if (dx > 10 || dy > 10) clearTouchState();
+      return;
     }
 
-    if (domPreviewDirty) persistOrderFromDOM();
-    else reorderByEntity(dragEntityKey, entity.key, intent === "after" ? "after" : "before");
-    domPreviewDirty = false;
-    rerender();
-  });
+    e.preventDefault();
+
+    const el = document.elementFromPoint(e.clientX, e.clientY);
+    const targetCard = el?.closest(".app-card");
+    if (!targetCard) {
+      clearDropClasses();
+      touchState.lastTargetKey = null;
+      touchState.lastIntent = null;
+      return;
+    }
+
+    const targetKey = targetCard.dataset.entityKey;
+    if (!targetKey || targetKey === touchState.draggedKey) return;
+
+    const groupsNow = getGroups();
+    const targetEntity = getEntityFromKey(targetKey, groupsNow);
+    const draggedEntity = getEntityFromKey(touchState.draggedKey, groupsNow);
+    if (!targetEntity || !draggedEntity) return;
+
+    const intent = computeDropIntent(targetEntity, draggedEntity, { currentTarget: targetCard, clientX: e.clientX });
+    touchState.lastTargetKey = targetKey;
+    touchState.lastIntent = intent;
+
+    clearDropClasses();
+    if (intent === "group") {
+      targetCard.classList.add("drop-group");
+      return;
+    }
+
+    if ((intent === "before" || intent === "after") && previewReorderInDOM(touchState.draggedKey, targetKey, intent)) {
+      domPreviewDirty = true;
+    }
+  }, { passive: false });
+
+  const finishTouchDrag = () => {
+    if (!touchState.active) {
+      clearTouchState();
+      return;
+    }
+
+    const draggedCard = findCardByKey(touchState.draggedKey);
+    if (draggedCard) draggedCard.classList.remove("touch-dragging");
+
+    if (touchState.lastTargetKey) {
+      const targetEntity = getEntityFromKey(touchState.lastTargetKey, getGroups());
+      if (targetEntity) executeDropAction(touchState.draggedKey, targetEntity, touchState.lastIntent || "before", rerender);
+      else if (domPreviewDirty) {
+        persistOrderFromDOM();
+        domPreviewDirty = false;
+        rerender();
+      }
+    } else if (domPreviewDirty) {
+      persistOrderFromDOM();
+      domPreviewDirty = false;
+      rerender();
+    }
+
+    dragEntityKey = null;
+    clearDropClasses();
+    clearTouchState();
+  };
+
+  card.addEventListener("pointerup", finishTouchDrag);
+  card.addEventListener("pointercancel", finishTouchDrag);
 
   const top = document.createElement("div");
   top.className = "card-top";
@@ -498,7 +655,6 @@ function makeCard(entity, pins, groups, qActive, rerender) {
     card.append(icon, name);
   } else {
     const folder = buildFolderPreview(entity.group);
-
     const name = document.createElement("div");
     name.className = "app-name";
     name.textContent = entity.group.name;
@@ -513,10 +669,7 @@ function makeCard(entity, pins, groups, qActive, rerender) {
       rerender();
     });
 
-    folder.addEventListener("click", () => {
-      const names = (entity.group.appIds || []).map(id => appById(id)?.name).filter(Boolean).join(", ");
-      alert(`Folder: ${entity.group.name}\nApps: ${names || "(none)"}`);
-    });
+    folder.addEventListener("click", () => openFolder(entity.group.id));
 
     card.append(folder, name, ungroupBtn);
   }
@@ -543,6 +696,8 @@ function render() {
 
   pinnedEmpty.style.display = pinned.length ? "none" : "block";
 
+  renderFolderOverlay();
+
   requestAnimationFrame(() => {
     animateReflow(prevRects);
     if (pendingGroupFlashKey) {
@@ -561,6 +716,17 @@ searchInput?.addEventListener("input", render);
 clearPinsBtn?.addEventListener("click", () => {
   localStorage.removeItem(PIN_KEY);
   render();
+});
+
+if (closeFolderBtn) closeFolderBtn.addEventListener("click", closeFolder);
+if (folderOverlay) {
+  folderOverlay.addEventListener("click", (e) => {
+    if (e.target === folderOverlay) closeFolder();
+  });
+}
+
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") closeFolder();
 });
 
 document.addEventListener("click", () => closeMenu());

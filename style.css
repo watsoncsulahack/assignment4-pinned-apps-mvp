@@ -77,6 +77,7 @@ body { margin: 0; font-family: Segoe UI, system-ui, sans-serif; background: var(
   display: grid;
   grid-template-rows: auto 1fr auto;
   user-select: none;
+  touch-action: pan-y;
 }
 
 .app-card.dragging { opacity: 0.55; }
@@ -86,6 +87,10 @@ body { margin: 0; font-family: Segoe UI, system-ui, sans-serif; background: var(
 }
 .app-card.group-created {
   animation: groupPop 0.45s ease;
+}
+
+.app-card.touch-dragging {
+  opacity: 0.65;
 }
 
 .card-top { display: flex; justify-content: flex-end; }
@@ -172,6 +177,67 @@ body { margin: 0; font-family: Segoe UI, system-ui, sans-serif; background: var(
   display: grid;
   place-items: center;
   font-weight: 700;
+}
+
+.folder-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.35);
+  display: grid;
+  place-items: center;
+  z-index: 50;
+}
+
+.folder-sheet {
+  width: min(560px, calc(100vw - 24px));
+  background: #fff;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  padding: 14px;
+}
+
+.folder-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.folder-head h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.folder-apps {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 8px;
+}
+
+.folder-app-btn {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px;
+  background: #fff;
+  cursor: pointer;
+  text-align: left;
+}
+
+.folder-app-btn:hover {
+  background: #f9fafb;
+}
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  background: #111827;
+  color: #fff;
+  padding: 8px 12px;
+  border-radius: 8px;
+  z-index: 60;
+  font-size: 0.85rem;
 }
 
 @keyframes groupPop {
