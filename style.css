@@ -179,41 +179,6 @@ body { margin: 0; font-family: Segoe UI, system-ui, sans-serif; background: var(
   font-weight: 700;
 }
 
-.folder-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,0.35);
-  display: grid;
-  place-items: center;
-  z-index: 50;
-}
-
-.folder-sheet {
-  width: min(560px, calc(100vw - 24px));
-  background: #fff;
-  border-radius: 12px;
-  border: 1px solid var(--border);
-  padding: 14px;
-}
-
-.folder-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 10px;
-}
-
-.folder-head h3 {
-  margin: 0;
-  font-size: 1rem;
-}
-
-.folder-apps {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-  gap: 8px;
-}
-
 .folder-app-btn {
   border: 1px solid var(--border);
   border-radius: 10px;
@@ -225,6 +190,13 @@ body { margin: 0; font-family: Segoe UI, system-ui, sans-serif; background: var(
 
 .folder-app-btn:hover {
   background: #f9fafb;
+}
+
+.folder-inline-list {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 6px;
+  margin-top: 8px;
 }
 
 .toast {

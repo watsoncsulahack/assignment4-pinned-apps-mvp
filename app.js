@@ -25,17 +25,13 @@ const pinnedEmpty = document.getElementById("pinnedEmpty");
 const searchInput = document.getElementById("searchInput");
 const clearPinsBtn = document.getElementById("clearPins");
 
-const folderOverlay = document.getElementById("folderOverlay");
-const folderTitle = document.getElementById("folderTitle");
-const folderApps = document.getElementById("folderApps");
-const closeFolderBtn = document.getElementById("closeFolder");
 const toastEl = document.getElementById("toast");
 
 let openMenuEl = null;
 let dragEntityKey = null;
 let pendingGroupFlashKey = null;
 let domPreviewDirty = false;
-let openFolderGroupId = null;
+let expandedGroupId = null;
 let toastTimer = null;
 
 const touchState = {
@@ -167,47 +163,8 @@ function showToast(text) {
   toastTimer = setTimeout(() => toastEl.classList.add("hidden"), 1300);
 }
 
-function openFolder(groupId) {
-  openFolderGroupId = groupId;
-  renderFolderOverlay();
-}
-
-function closeFolder() {
-  openFolderGroupId = null;
-  renderFolderOverlay();
-}
-
-function renderFolderOverlay() {
-  if (!folderOverlay || !folderApps || !folderTitle) return;
-  if (!openFolderGroupId) {
-    folderOverlay.classList.add("hidden");
-    return;
-  }
-
-  const groups = getGroups();
-  const group = groups.find(g => g.id === openFolderGroupId);
-  if (!group) {
-    folderOverlay.classList.add("hidden");
-    openFolderGroupId = null;
-    return;
-  }
-
-  folderTitle.textContent = group.name;
-  folderApps.innerHTML = "";
-
-  (group.appIds || []).map(appById).filter(Boolean).forEach(app => {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "folder-app-btn";
-    btn.textContent = app.name;
-    btn.addEventListener("click", () => {
-      showToast(`Opening ${app.name}`);
-      closeFolder();
-    });
-    folderApps.appendChild(btn);
-  });
-
-  folderOverlay.classList.remove("hidden");
+function toggleExpandedGroup(groupId) {
+  expandedGroupId = expandedGroupId === groupId ? null : groupId;
 }
 
 function buildFolderPreview(group) {
@@ -415,7 +372,7 @@ function addAppToExistingGroup(draggedAppId, targetGroupId) {
 function ungroupById(groupId) {
   const groups = getGroups().filter(g => g.id !== groupId);
   saveGroups(groups);
-  if (openFolderGroupId === groupId) openFolderGroupId = null;
+  if (expandedGroupId === groupId) expandedGroupId = null;
 }
 
 function computeDropIntent(targetEntity, draggedEntity, event) {
@@ -669,9 +626,29 @@ function makeCard(entity, pins, groups, qActive, rerender) {
       rerender();
     });
 
-    folder.addEventListener("click", () => openFolder(entity.group.id));
+    folder.addEventListener("click", () => {
+      toggleExpandedGroup(entity.group.id);
+      rerender();
+    });
 
     card.append(folder, name, ungroupBtn);
+
+    if (expandedGroupId === entity.group.id) {
+      const inline = document.createElement("div");
+      inline.className = "folder-inline-list";
+      (entity.group.appIds || []).map(appById).filter(Boolean).forEach(app => {
+        const appBtn = document.createElement("button");
+        appBtn.type = "button";
+        appBtn.className = "folder-app-btn";
+        appBtn.textContent = app.name;
+        appBtn.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          showToast(`Opening ${app.name}`);
+        });
+        inline.appendChild(appBtn);
+      });
+      card.appendChild(inline);
+    }
   }
 
   return card;
@@ -696,8 +673,6 @@ function render() {
 
   pinnedEmpty.style.display = pinned.length ? "none" : "block";
 
-  renderFolderOverlay();
-
   requestAnimationFrame(() => {
     animateReflow(prevRects);
     if (pendingGroupFlashKey) {
@@ -718,15 +693,11 @@ clearPinsBtn?.addEventListener("click", () => {
   render();
 });
 
-if (closeFolderBtn) closeFolderBtn.addEventListener("click", closeFolder);
-if (folderOverlay) {
-  folderOverlay.addEventListener("click", (e) => {
-    if (e.target === folderOverlay) closeFolder();
-  });
-}
-
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape") closeFolder();
+  if (e.key === "Escape" && expandedGroupId) {
+    expandedGroupId = null;
+    render();
+  }
 });
 
 document.addEventListener("click", () => closeMenu());
