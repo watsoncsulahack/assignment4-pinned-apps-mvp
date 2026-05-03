@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CSULB Apps Dashboard - Pinned Apps MVP</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="brand">CSULB</div>
+      <nav>
+        <a class="nav-item" href="#">My Account</a>
+        <a class="nav-item active" href="#">My Apps</a>
+        <a class="nav-item" href="#">My Groups</a>
+        <a class="nav-item" href="#">My Access</a>
+      </nav>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <h1>Apps dashboard</h1>
+        <div class="subtle">Clickable MVP: Pinned apps feature only</div>
+      </header>
+
+      <section class="search-row">
+        <input id="searchInput" type="search" placeholder="Search apps" />
+      </section>
+
+      <section class="tabs">
+        <button class="tab active" type="button">Apps</button>
+        <button class="tab" type="button">AI Tools</button>
+        <button class="tab" type="button">Health & Wellness Resources</button>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Pinned apps</h2>
+          <button id="clearPins" class="link-btn" type="button">Clear pins</button>
+        </div>
+        <div id="pinnedGrid" class="apps-grid"></div>
+        <p id="pinnedEmpty" class="hint">No pinned apps yet. Click the pin icon on any app card below.</p>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>All apps</h2>
+        </div>
+        <div id="allAppsGrid" class="apps-grid"></div>
+      </section>
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
