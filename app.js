@@ -16,12 +16,20 @@ const APPS = [
 ];
 
 const PIN_KEY = "csulb.pinnedApps";
+const GROUPS_KEY = "csulb.appGroups";
+const ORDER_KEY = "csulb.appOrder";
 
 const allAppsGrid = document.getElementById("allAppsGrid");
 const pinnedGrid = document.getElementById("pinnedGrid");
 const pinnedEmpty = document.getElementById("pinnedEmpty");
 const searchInput = document.getElementById("searchInput");
-const clearPins = document.getElementById("clearPins");
+const clearPinsBtn = document.getElementById("clearPins");
+const createGroupBtn = document.getElementById("createGroup");
+const groupsList = document.getElementById("groupsList");
+const groupsEmpty = document.getElementById("groupsEmpty");
+
+let openMenuEl = null;
+let dragAppId = null;
 
 function getPins() {
   try {
@@ -35,27 +43,264 @@ function savePins(set) {
   localStorage.setItem(PIN_KEY, JSON.stringify([...set]));
 }
 
-function appCard(app, pinnedSet) {
+function getGroups() {
+  try {
+    const g = JSON.parse(localStorage.getItem(GROUPS_KEY) || "[]");
+    return Array.isArray(g) ? g : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveGroups(groups) {
+  localStorage.setItem(GROUPS_KEY, JSON.stringify(groups));
+}
+
+function defaultOrder() {
+  return APPS.map(a => a.id);
+}
+
+function getOrder() {
+  try {
+    const fromLS = JSON.parse(localStorage.getItem(ORDER_KEY) || "[]");
+    if (!Array.isArray(fromLS) || !fromLS.length) return defaultOrder();
+    const known = new Set(APPS.map(a => a.id));
+    const deduped = [];
+    const seen = new Set();
+    for (const id of fromLS) {
+      if (known.has(id) && !seen.has(id)) {
+        deduped.push(id);
+        seen.add(id);
+      }
+    }
+    for (const id of defaultOrder()) {
+      if (!seen.has(id)) deduped.push(id);
+    }
+    return deduped;
+  } catch {
+    return defaultOrder();
+  }
+}
+
+function saveOrder(order) {
+  localStorage.setItem(ORDER_KEY, JSON.stringify(order));
+}
+
+function appById(id) {
+  return APPS.find(a => a.id === id);
+}
+
+function orderedApps() {
+  const order = getOrder();
+  return order.map(appById).filter(Boolean);
+}
+
+function groupedAppIds(groups) {
+  const out = new Set();
+  groups.forEach(g => (g.appIds || []).forEach(id => out.add(id)));
+  return out;
+}
+
+function groupsForApp(appId, groups) {
+  return groups.filter(g => (g.appIds || []).includes(appId));
+}
+
+function closeMenu() {
+  if (openMenuEl) openMenuEl.classList.add("hidden");
+  openMenuEl = null;
+}
+
+function renderGroups(groups) {
+  groupsList.innerHTML = "";
+  if (!groups.length) {
+    groupsEmpty.style.display = "block";
+    return;
+  }
+  groupsEmpty.style.display = "none";
+
+  for (const group of groups) {
+    const card = document.createElement("article");
+    card.className = "group-card";
+
+    const top = document.createElement("div");
+    top.className = "group-top";
+
+    const title = document.createElement("div");
+    title.className = "group-name";
+    title.textContent = group.name;
+
+    const removeBtn = document.createElement("button");
+    removeBtn.className = "link-btn";
+    removeBtn.type = "button";
+    removeBtn.textContent = "Delete";
+    removeBtn.addEventListener("click", () => {
+      const next = getGroups().filter(g => g.id !== group.id);
+      saveGroups(next);
+      render();
+    });
+
+    top.appendChild(title);
+    top.appendChild(removeBtn);
+
+    const chips = document.createElement("div");
+    chips.className = "chips";
+    const members = (group.appIds || []).map(appById).filter(Boolean);
+    members.forEach(app => {
+      const chip = document.createElement("span");
+      chip.className = "chip";
+      chip.textContent = app.name;
+      chips.appendChild(chip);
+    });
+
+    if (!members.length) {
+      const empty = document.createElement("span");
+      empty.className = "chip";
+      empty.textContent = "(empty group)";
+      chips.appendChild(empty);
+    }
+
+    card.appendChild(top);
+    card.appendChild(chips);
+    groupsList.appendChild(card);
+  }
+}
+
+function createMenu(app, pins, groups, rerender) {
+  const menu = document.createElement("div");
+  menu.className = "menu hidden";
+
+  const appGroups = groupsForApp(app.id, groups);
+  const inGroup = appGroups.length > 0;
+  const isPinned = pins.has(app.id) || inGroup;
+
+  const pinBtn = document.createElement("button");
+  pinBtn.type = "button";
+  pinBtn.textContent = isPinned ? "Unpin app" : "Pin app";
+  pinBtn.addEventListener("click", () => {
+    const nextPins = getPins();
+    if (isPinned) {
+      if (inGroup) {
+        alert("This app is pinned through a group. Ungroup it to unpin.");
+      } else {
+        nextPins.delete(app.id);
+        savePins(nextPins);
+      }
+    } else {
+      nextPins.add(app.id);
+      savePins(nextPins);
+    }
+    closeMenu();
+    rerender();
+  });
+
+  const addToGroupBtn = document.createElement("button");
+  addToGroupBtn.type = "button";
+  addToGroupBtn.textContent = "Add to group";
+  addToGroupBtn.addEventListener("click", () => {
+    let groupsNow = getGroups();
+    const names = groupsNow.map(g => g.name).join(", ");
+    const input = prompt(
+      names ? `Enter group name (${names}) or a new group name:` : "Enter new group name:",
+      groupsNow[0]?.name || ""
+    );
+    if (!input) return;
+    const name = input.trim();
+    if (!name) return;
+
+    let group = groupsNow.find(g => g.name.toLowerCase() === name.toLowerCase());
+    if (!group) {
+      group = { id: `g_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, name, appIds: [] };
+      groupsNow.push(group);
+    }
+    group.appIds = Array.from(new Set([...(group.appIds || []), app.id]));
+    saveGroups(groupsNow);
+    closeMenu();
+    rerender();
+  });
+
+  const removeFromGroupsBtn = document.createElement("button");
+  removeFromGroupsBtn.type = "button";
+  removeFromGroupsBtn.textContent = "Remove from group(s)";
+  removeFromGroupsBtn.addEventListener("click", () => {
+    let groupsNow = getGroups();
+    groupsNow = groupsNow.map(g => ({ ...g, appIds: (g.appIds || []).filter(id => id !== app.id) }));
+    saveGroups(groupsNow);
+    closeMenu();
+    rerender();
+  });
+
+  menu.appendChild(pinBtn);
+  menu.appendChild(addToGroupBtn);
+  if (inGroup) menu.appendChild(removeFromGroupsBtn);
+  return menu;
+}
+
+function moveBefore(order, draggedId, targetId) {
+  if (!draggedId || !targetId || draggedId === targetId) return order;
+  const next = [...order];
+  const from = next.indexOf(draggedId);
+  const to = next.indexOf(targetId);
+  if (from === -1 || to === -1) return order;
+  next.splice(from, 1);
+  const adjustedTo = from < to ? to - 1 : to;
+  next.splice(adjustedTo, 0, draggedId);
+  return next;
+}
+
+function makeCard(app, pins, groups, q, rerender) {
   const card = document.createElement("article");
   card.className = "app-card";
+
+  // Disable drag when searching to avoid confusing reorder behavior
+  card.draggable = !q;
+  card.dataset.appId = app.id;
+
+  card.addEventListener("dragstart", () => {
+    dragAppId = app.id;
+    card.classList.add("dragging");
+  });
+  card.addEventListener("dragend", () => {
+    dragAppId = null;
+    card.classList.remove("dragging");
+  });
+  card.addEventListener("dragover", (e) => {
+    if (!dragAppId || q) return;
+    e.preventDefault();
+    card.classList.add("drag-over");
+  });
+  card.addEventListener("dragleave", () => card.classList.remove("drag-over"));
+  card.addEventListener("drop", (e) => {
+    if (!dragAppId || q) return;
+    e.preventDefault();
+    card.classList.remove("drag-over");
+    const next = moveBefore(getOrder(), dragAppId, app.id);
+    saveOrder(next);
+    rerender();
+  });
 
   const top = document.createElement("div");
   top.className = "card-top";
 
-  const pin = document.createElement("button");
-  pin.className = "pin-btn" + (pinnedSet.has(app.id) ? " pinned" : "");
-  pin.type = "button";
-  pin.title = pinnedSet.has(app.id) ? "Unpin app" : "Pin app";
-  pin.textContent = "📌";
-  pin.addEventListener("click", () => {
-    const next = getPins();
-    if (next.has(app.id)) next.delete(app.id);
-    else next.add(app.id);
-    savePins(next);
-    render();
+  const menuWrap = document.createElement("div");
+  menuWrap.className = "menu-wrap";
+
+  const menuBtn = document.createElement("button");
+  menuBtn.className = "menu-btn";
+  menuBtn.type = "button";
+  menuBtn.title = "App actions";
+  menuBtn.textContent = "⋮";
+
+  const menu = createMenu(app, pins, groups, rerender);
+  menuBtn.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    if (openMenuEl && openMenuEl !== menu) openMenuEl.classList.add("hidden");
+    menu.classList.toggle("hidden");
+    openMenuEl = menu.classList.contains("hidden") ? null : menu;
   });
 
-  top.appendChild(pin);
+  menuWrap.appendChild(menuBtn);
+  menuWrap.appendChild(menu);
+  top.appendChild(menuWrap);
 
   const icon = document.createElement("div");
   icon.className = "app-icon";
@@ -73,26 +318,51 @@ function appCard(app, pinnedSet) {
 }
 
 function render() {
-  const pins = getPins();
+  const pinsManual = getPins();
+  const groups = getGroups();
+  const grouped = groupedAppIds(groups);
   const q = (searchInput?.value || "").trim().toLowerCase();
-  const filtered = APPS.filter(a => a.name.toLowerCase().includes(q));
+
+  const all = orderedApps();
+  const filtered = q ? all.filter(a => a.name.toLowerCase().includes(q)) : all;
+
+  const isPinned = (id) => pinsManual.has(id) || grouped.has(id);
+  const pinnedApps = filtered.filter(a => isPinned(a.id));
+  const others = filtered.filter(a => !isPinned(a.id));
+
+  renderGroups(groups);
 
   pinnedGrid.innerHTML = "";
   allAppsGrid.innerHTML = "";
 
-  const pinnedApps = filtered.filter(a => pins.has(a.id));
-  const others = filtered.filter(a => !pins.has(a.id));
+  const rerender = () => render();
 
-  pinnedApps.forEach(app => pinnedGrid.appendChild(appCard(app, pins)));
-  others.forEach(app => allAppsGrid.appendChild(appCard(app, pins)));
+  pinnedApps.forEach(app => pinnedGrid.appendChild(makeCard(app, pinsManual, groups, q, rerender)));
+  others.forEach(app => allAppsGrid.appendChild(makeCard(app, pinsManual, groups, q, rerender)));
 
   pinnedEmpty.style.display = pinnedApps.length ? "none" : "block";
 }
 
 searchInput?.addEventListener("input", render);
-clearPins?.addEventListener("click", () => {
+clearPinsBtn?.addEventListener("click", () => {
+  // keep group-pinned apps in place as requested
   localStorage.removeItem(PIN_KEY);
   render();
 });
+
+createGroupBtn?.addEventListener("click", () => {
+  const name = prompt("Enter new group name:", "");
+  if (!name || !name.trim()) return;
+  const groups = getGroups();
+  if (groups.some(g => g.name.toLowerCase() === name.trim().toLowerCase())) {
+    alert("Group name already exists.");
+    return;
+  }
+  groups.push({ id: `g_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, name: name.trim(), appIds: [] });
+  saveGroups(groups);
+  render();
+});
+
+document.addEventListener("click", () => closeMenu());
 
 render();

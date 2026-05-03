@@ -5,6 +5,7 @@
   --text: #1f2937;
   --muted: #6b7280;
   --accent: #2563eb;
+  --menu: #111827;
 }
 
 * { box-sizing: border-box; }
@@ -58,7 +59,7 @@ body { margin: 0; font-family: Segoe UI, system-ui, sans-serif; background: var(
   font-size: 0.9rem;
 }
 
-.hint { color: var(--muted); margin: 0; font-size: 0.9rem; }
+.hint { color: var(--muted); margin: 0 0 10px; font-size: 0.9rem; }
 
 .apps-grid {
   display: grid;
@@ -67,6 +68,7 @@ body { margin: 0; font-family: Segoe UI, system-ui, sans-serif; background: var(
 }
 
 .app-card {
+  position: relative;
   border: 1px solid var(--border);
   border-radius: 10px;
   background: #fff;
@@ -76,16 +78,55 @@ body { margin: 0; font-family: Segoe UI, system-ui, sans-serif; background: var(
   grid-template-rows: auto 1fr auto;
 }
 
+.app-card.dragging {
+  opacity: 0.55;
+}
+
+.app-card.drag-over {
+  outline: 2px dashed var(--accent);
+}
+
 .card-top { display: flex; justify-content: flex-end; }
-.pin-btn {
+
+.menu-wrap { position: relative; }
+.menu-btn {
   border: none;
   background: transparent;
   cursor: pointer;
-  font-size: 16px;
+  font-size: 20px;
   line-height: 1;
-  color: #9ca3af;
+  color: var(--menu);
+  padding: 2px 4px;
 }
-.pin-btn.pinned { color: #f59e0b; }
+
+.menu {
+  position: absolute;
+  right: 0;
+  top: 22px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  min-width: 148px;
+  box-shadow: 0 8px 22px rgba(0,0,0,0.12);
+  z-index: 20;
+  overflow: hidden;
+}
+
+.menu button {
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: #fff;
+  padding: 9px 10px;
+  cursor: pointer;
+  font-size: 0.86rem;
+}
+
+.menu button:hover {
+  background: #f3f4f6;
+}
+
+.hidden { display: none; }
 
 .app-icon {
   width: 46px;
@@ -99,6 +140,46 @@ body { margin: 0; font-family: Segoe UI, system-ui, sans-serif; background: var(
 }
 
 .app-name { font-size: 0.86rem; color: #111827; }
+
+.groups-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 10px;
+}
+
+.group-card {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px;
+  background: #fff;
+}
+
+.group-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.group-name {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.chip {
+  border: 1px solid #d1d5db;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 0.76rem;
+  background: #f9fafb;
+}
 
 @media (max-width: 860px) {
   .layout { grid-template-columns: 1fr; }
