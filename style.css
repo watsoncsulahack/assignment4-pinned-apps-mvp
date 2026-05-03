@@ -81,6 +81,15 @@ body { margin: 0; font-family: Segoe UI, system-ui, sans-serif; background: var(
 
 .app-card.dragging { opacity: 0.55; }
 .app-card.drag-over { outline: 2px dashed var(--accent); }
+.app-card.drop-before { box-shadow: inset 4px 0 0 #2563eb; }
+.app-card.drop-after { box-shadow: inset -4px 0 0 #2563eb; }
+.app-card.drop-group {
+  outline: 2px solid #22c55e;
+  background: #f0fdf4;
+}
+.app-card.group-created {
+  animation: groupPop 0.45s ease;
+}
 
 .card-top { display: flex; justify-content: flex-end; }
 
@@ -134,6 +143,17 @@ body { margin: 0; font-family: Segoe UI, system-ui, sans-serif; background: var(
 
 .app-name { font-size: 0.86rem; color: #111827; }
 
+.ungroup-btn {
+  margin-top: 6px;
+  border: 1px solid #d1d5db;
+  background: #fff;
+  border-radius: 8px;
+  font-size: 0.76rem;
+  padding: 4px 7px;
+  color: #374151;
+  cursor: pointer;
+}
+
 .folder-preview {
   width: 46px;
   height: 46px;
@@ -155,6 +175,12 @@ body { margin: 0; font-family: Segoe UI, system-ui, sans-serif; background: var(
   display: grid;
   place-items: center;
   font-weight: 700;
+}
+
+@keyframes groupPop {
+  0% { transform: scale(0.94); }
+  60% { transform: scale(1.04); }
+  100% { transform: scale(1); }
 }
 
 @media (max-width: 860px) {

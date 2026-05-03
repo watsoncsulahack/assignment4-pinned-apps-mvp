@@ -27,6 +27,7 @@ const clearPinsBtn = document.getElementById("clearPins");
 
 let openMenuEl = null;
 let dragEntityKey = null;
+let pendingGroupFlashKey = null;
 
 function appById(id) {
   return APPS.find(a => a.id === id) || null;
@@ -42,7 +43,9 @@ function getGroups() {
   try {
     const v = JSON.parse(localStorage.getItem(GROUPS_KEY) || "[]");
     return Array.isArray(v) ? v : [];
-  } catch { return []; }
+  } catch {
+    return [];
+  }
 }
 function saveGroups(groups) { localStorage.setItem(GROUPS_KEY, JSON.stringify(groups)); }
 
@@ -54,10 +57,17 @@ function getOrder() {
     const known = new Set(fallback);
     const seen = new Set();
     const out = [];
-    for (const id of raw) if (known.has(id) && !seen.has(id)) { seen.add(id); out.push(id); }
+    for (const id of raw) {
+      if (known.has(id) && !seen.has(id)) {
+        seen.add(id);
+        out.push(id);
+      }
+    }
     for (const id of fallback) if (!seen.has(id)) out.push(id);
     return out;
-  } catch { return fallback; }
+  } catch {
+    return fallback;
+  }
 }
 function saveOrder(order) { localStorage.setItem(ORDER_KEY, JSON.stringify(order)); }
 
@@ -68,6 +78,26 @@ function findGroupByAppId(groups, appId) {
 function groupPinned(groups, pins, group) {
   if (pins.has(`group:${group.id}`)) return true;
   return (group.appIds || []).some(id => pins.has(id));
+}
+
+function getEntityFromKey(key, groups) {
+  const [type, id] = (key || "").split(":");
+  if (type === "app") {
+    const app = appById(id);
+    return app ? { type: "app", key, app } : null;
+  }
+  if (type === "group") {
+    const group = groups.find(g => g.id === id);
+    return group ? { type: "group", key, group } : null;
+  }
+  return null;
+}
+
+function keyToAppIds(key, groups) {
+  const entity = getEntityFromKey(key, groups);
+  if (!entity) return [];
+  if (entity.type === "app") return [entity.app.id];
+  return [...(entity.group.appIds || [])];
 }
 
 function buildEntities(order, groups, pins) {
@@ -90,9 +120,10 @@ function buildEntities(order, groups, pins) {
   const q = (searchInput?.value || "").trim().toLowerCase();
   const filtered = q
     ? out.filter(e => {
-        if (e.type === "app") return e.app.name.toLowerCase().includes(q);
-        return e.group.name.toLowerCase().includes(q) || (e.group.appIds || []).some(id => appById(id)?.name.toLowerCase().includes(q));
-      })
+      if (e.type === "app") return e.app.name.toLowerCase().includes(q);
+      return e.group.name.toLowerCase().includes(q)
+        || (e.group.appIds || []).some(id => appById(id)?.name.toLowerCase().includes(q));
+    })
     : out;
 
   const pinned = filtered.filter(e => {
@@ -136,8 +167,11 @@ function createAppMenu(entity, pins, groups, rerender) {
   pinBtn.onclick = () => {
     const nextPins = getPins();
     if (isPinned) {
-      if (inGroup) alert("This app is in a group. Ungroup it before unpinning.");
-      else nextPins.delete(app.id);
+      if (inGroup) {
+        alert("This app is in a group. Ungroup it before unpinning.");
+      } else {
+        nextPins.delete(app.id);
+      }
     } else {
       nextPins.add(app.id);
     }
@@ -146,61 +180,7 @@ function createAppMenu(entity, pins, groups, rerender) {
     rerender();
   };
 
-  const createGroupBtn = document.createElement("button");
-  createGroupBtn.textContent = "Create group";
-  createGroupBtn.onclick = () => {
-    if (inGroup) {
-      alert("App already in a group.");
-      return;
-    }
-    const name = prompt("Group name:", `${app.name} Group`);
-    if (!name || !name.trim()) return;
-    const groupsNow = getGroups();
-    groupsNow.push({ id: `g_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, name: name.trim(), appIds: [app.id] });
-    saveGroups(groupsNow);
-    closeMenu();
-    rerender();
-  };
-
-  const addToGroupBtn = document.createElement("button");
-  addToGroupBtn.textContent = "Add to group";
-  addToGroupBtn.onclick = () => {
-    if (inGroup) {
-      alert("App already in a group.");
-      return;
-    }
-    const groupsNow = getGroups();
-    if (!groupsNow.length) {
-      alert("No groups exist yet. Use Create group first.");
-      return;
-    }
-    const names = groupsNow.map(g => g.name).join(", ");
-    const chosen = prompt(`Type group name (${names}):`, groupsNow[0].name);
-    if (!chosen) return;
-    const g = groupsNow.find(x => x.name.toLowerCase() === chosen.trim().toLowerCase());
-    if (!g) {
-      alert("Group not found.");
-      return;
-    }
-    g.appIds = Array.from(new Set([...(g.appIds || []), app.id]));
-    saveGroups(groupsNow);
-    closeMenu();
-    rerender();
-  };
-
-  const removeGroupBtn = document.createElement("button");
-  removeGroupBtn.textContent = "Remove from group";
-  removeGroupBtn.onclick = () => {
-    let groupsNow = getGroups();
-    groupsNow = groupsNow.map(g => ({ ...g, appIds: (g.appIds || []).filter(id => id !== app.id) }));
-    groupsNow = groupsNow.filter(g => (g.appIds || []).length > 0);
-    saveGroups(groupsNow);
-    closeMenu();
-    rerender();
-  };
-
-  menu.append(pinBtn, createGroupBtn, addToGroupBtn);
-  if (inGroup) menu.append(removeGroupBtn);
+  menu.append(pinBtn);
   return menu;
 }
 
@@ -209,18 +189,14 @@ function createGroupMenu(entity, pins, groups, rerender) {
   const menu = document.createElement("div");
   menu.className = "menu hidden";
 
-  const ungroupBtn = document.createElement("button");
-  ungroupBtn.textContent = "Ungroup apps";
-  ungroupBtn.onclick = () => {
-    const groupsNow = getGroups().filter(g => g.id !== group.id);
-    saveGroups(groupsNow);
-    closeMenu();
-    rerender();
-  };
-
+  const pinned = groupPinned(groups, pins, group);
   const pinBtn = document.createElement("button");
-  pinBtn.textContent = "Pin group";
+  pinBtn.textContent = pinned ? "Unpin group" : "Pin group";
   pinBtn.onclick = () => {
+    if (pinned) {
+      alert("Ungroup apps before unpinning grouped apps.");
+      return;
+    }
     const nextPins = getPins();
     nextPins.add(`group:${group.id}`);
     savePins(nextPins);
@@ -228,37 +204,129 @@ function createGroupMenu(entity, pins, groups, rerender) {
     rerender();
   };
 
-  const unpinBtn = document.createElement("button");
-  unpinBtn.textContent = "Unpin group";
-  unpinBtn.onclick = () => {
-    alert("Ungroup apps to unpin grouped apps.");
-  };
-
-  menu.append(pinBtn, unpinBtn, ungroupBtn);
+  menu.append(pinBtn);
   return menu;
 }
 
-function reorderByEntity(draggedKey, targetKey) {
+function clearDropClasses() {
+  document.querySelectorAll(".app-card").forEach(c => {
+    c.classList.remove("drop-before", "drop-after", "drop-group");
+  });
+}
+
+function reorderByEntity(draggedKey, targetKey, placement = "before") {
   if (!draggedKey || !targetKey || draggedKey === targetKey) return;
+
   const order = getOrder();
   const groups = getGroups();
 
-  const keyToAppIds = (key) => {
-    const [type, id] = key.split(":");
-    if (type === "app") return [id];
-    const g = groups.find(x => x.id === id);
-    return g ? [...(g.appIds || [])] : [];
-  };
-
-  const draggedIds = keyToAppIds(draggedKey);
-  const targetIds = keyToAppIds(targetKey);
+  const draggedIds = keyToAppIds(draggedKey, groups);
+  const targetIds = keyToAppIds(targetKey, groups);
   if (!draggedIds.length || !targetIds.length) return;
 
   const next = order.filter(id => !draggedIds.includes(id));
-  const insertAt = next.indexOf(targetIds[0]);
-  if (insertAt === -1) return;
+  const targetStart = next.indexOf(targetIds[0]);
+  if (targetStart === -1) return;
+
+  let insertAt = targetStart;
+  if (placement === "after") {
+    const targetSet = new Set(targetIds);
+    let targetEnd = targetStart;
+    while (targetEnd + 1 < next.length && targetSet.has(next[targetEnd + 1])) targetEnd++;
+    insertAt = targetEnd + 1;
+  }
+
   next.splice(insertAt, 0, ...draggedIds);
   saveOrder(next);
+}
+
+function nextGroupName(groups) {
+  let n = 1;
+  const names = new Set(groups.map(g => g.name.toLowerCase()));
+  while (names.has(`group ${n}`)) n++;
+  return `Group ${n}`;
+}
+
+function createGroupFromPair(targetAppId, draggedAppId) {
+  const groups = getGroups();
+  if (findGroupByAppId(groups, targetAppId) || findGroupByAppId(groups, draggedAppId)) return;
+
+  const groupId = `g_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+  groups.push({
+    id: groupId,
+    name: nextGroupName(groups),
+    appIds: [targetAppId, draggedAppId]
+  });
+  saveGroups(groups);
+  pendingGroupFlashKey = `group:${groupId}`;
+}
+
+function addAppToExistingGroup(draggedAppId, targetGroupId) {
+  const groups = getGroups();
+  if (findGroupByAppId(groups, draggedAppId)) return;
+  const g = groups.find(x => x.id === targetGroupId);
+  if (!g) return;
+
+  const order = getOrder();
+  const nextOrder = order.filter(id => id !== draggedAppId);
+  let lastIndex = -1;
+  for (const id of g.appIds || []) {
+    const i = nextOrder.indexOf(id);
+    if (i > lastIndex) lastIndex = i;
+  }
+  const insertAt = lastIndex >= 0 ? lastIndex + 1 : nextOrder.length;
+  nextOrder.splice(insertAt, 0, draggedAppId);
+  saveOrder(nextOrder);
+
+  g.appIds = [...(g.appIds || []), draggedAppId];
+  saveGroups(groups);
+  pendingGroupFlashKey = `group:${g.id}`;
+}
+
+function ungroupById(groupId) {
+  const groups = getGroups().filter(g => g.id !== groupId);
+  saveGroups(groups);
+}
+
+function captureCardRects() {
+  const map = new Map();
+  document.querySelectorAll(".app-card").forEach(card => {
+    const key = card.dataset.entityKey;
+    if (key) map.set(key, card.getBoundingClientRect());
+  });
+  return map;
+}
+
+function animateReflow(prevRects) {
+  const cards = [...document.querySelectorAll(".app-card")];
+  cards.forEach(card => {
+    const key = card.dataset.entityKey;
+    const prev = prevRects.get(key);
+    if (!prev) return;
+    const now = card.getBoundingClientRect();
+    const dx = prev.left - now.left;
+    const dy = prev.top - now.top;
+    if (!dx && !dy) return;
+    card.style.transition = "none";
+    card.style.transform = `translate(${dx}px, ${dy}px)`;
+    requestAnimationFrame(() => {
+      card.style.transition = "transform 220ms ease";
+      card.style.transform = "";
+    });
+  });
+}
+
+function computeDropIntent(targetEntity, draggedEntity, event) {
+  const rect = event.currentTarget.getBoundingClientRect();
+  const x = (event.clientX - rect.left) / rect.width;
+
+  if (draggedEntity?.type === "app") {
+    if (x < 0.15) return "before";
+    if (x > 0.85) return "after";
+    if (targetEntity.type === "app" || targetEntity.type === "group") return "group";
+  }
+
+  return x < 0.5 ? "before" : "after";
 }
 
 function makeCard(entity, pins, groups, qActive, rerender) {
@@ -270,31 +338,70 @@ function makeCard(entity, pins, groups, qActive, rerender) {
   card.addEventListener("dragstart", (e) => {
     dragEntityKey = entity.key;
     e.dataTransfer.setData("text/plain", entity.key);
+    closeMenu();
     card.classList.add("dragging");
   });
+
   card.addEventListener("dragend", () => {
     dragEntityKey = null;
+    clearDropClasses();
     card.classList.remove("dragging");
   });
+
   card.addEventListener("dragover", (e) => {
-    if (!dragEntityKey || qActive) return;
+    if (!dragEntityKey || qActive || dragEntityKey === entity.key) return;
+    const draggedEntity = getEntityFromKey(dragEntityKey, getGroups());
+    const intent = computeDropIntent(entity, draggedEntity, e);
     e.preventDefault();
-    card.classList.add("drag-over");
+    clearDropClasses();
+    if (intent === "before") card.classList.add("drop-before");
+    else if (intent === "after") card.classList.add("drop-after");
+    else if (intent === "group") card.classList.add("drop-group");
   });
-  card.addEventListener("dragleave", () => card.classList.remove("drag-over"));
+
+  card.addEventListener("dragleave", () => {
+    card.classList.remove("drop-before", "drop-after", "drop-group");
+  });
+
   card.addEventListener("drop", (e) => {
-    if (!dragEntityKey || qActive) return;
+    if (!dragEntityKey || qActive || dragEntityKey === entity.key) return;
     e.preventDefault();
-    card.classList.remove("drag-over");
-    const dragged = e.dataTransfer.getData("text/plain") || dragEntityKey;
-    reorderByEntity(dragged, entity.key);
+
+    const groupsNow = getGroups();
+    const draggedEntity = getEntityFromKey(dragEntityKey, groupsNow);
+    if (!draggedEntity) return;
+
+    const intent = computeDropIntent(entity, draggedEntity, e);
+    clearDropClasses();
+
+    if (intent === "group" && draggedEntity.type === "app") {
+      if (entity.type === "app") {
+        const ok = confirm(`Create group with ${draggedEntity.app.name} and ${entity.app.name}?`);
+        if (ok) {
+          reorderByEntity(dragEntityKey, entity.key, "after");
+          createGroupFromPair(entity.app.id, draggedEntity.app.id);
+          rerender();
+        }
+        return;
+      }
+
+      if (entity.type === "group") {
+        addAppToExistingGroup(draggedEntity.app.id, entity.group.id);
+        rerender();
+        return;
+      }
+    }
+
+    reorderByEntity(dragEntityKey, entity.key, intent === "after" ? "after" : "before");
     rerender();
   });
 
   const top = document.createElement("div");
   top.className = "card-top";
+
   const wrap = document.createElement("div");
   wrap.className = "menu-wrap";
+
   const btn = document.createElement("button");
   btn.className = "menu-btn";
   btn.textContent = "⋮";
@@ -319,20 +426,35 @@ function makeCard(entity, pins, groups, qActive, rerender) {
     icon.className = "app-icon";
     icon.style.background = entity.app.color;
     icon.textContent = entity.app.icon;
+
     const name = document.createElement("div");
     name.className = "app-name";
     name.textContent = entity.app.name;
+
     card.append(icon, name);
   } else {
     const folder = buildFolderPreview(entity.group);
+
     const name = document.createElement("div");
     name.className = "app-name";
     name.textContent = entity.group.name;
+
+    const ungroupBtn = document.createElement("button");
+    ungroupBtn.className = "ungroup-btn";
+    ungroupBtn.type = "button";
+    ungroupBtn.textContent = "Ungroup";
+    ungroupBtn.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      ungroupById(entity.group.id);
+      rerender();
+    });
+
     folder.addEventListener("click", () => {
       const names = (entity.group.appIds || []).map(id => appById(id)?.name).filter(Boolean).join(", ");
       alert(`Folder: ${entity.group.name}\nApps: ${names || "(none)"}`);
     });
-    card.append(folder, name);
+
+    card.append(folder, name, ungroupBtn);
   }
 
   return card;
@@ -340,10 +462,11 @@ function makeCard(entity, pins, groups, qActive, rerender) {
 
 function render() {
   closeMenu();
+  const prevRects = captureCardRects();
+
   const pins = getPins();
   const groups = getGroups();
   const order = getOrder();
-
   const { pinned, unpinned, qActive } = buildEntities(order, groups, pins);
 
   pinnedGrid.innerHTML = "";
@@ -355,6 +478,19 @@ function render() {
   unpinned.forEach(e => allAppsGrid.appendChild(makeCard(e, pins, groups, qActive, rerender)));
 
   pinnedEmpty.style.display = pinned.length ? "none" : "block";
+
+  requestAnimationFrame(() => {
+    animateReflow(prevRects);
+    if (pendingGroupFlashKey) {
+      const target = [...document.querySelectorAll(".app-card")]
+        .find(c => c.dataset.entityKey === pendingGroupFlashKey);
+      if (target) {
+        target.classList.add("group-created");
+        setTimeout(() => target.classList.remove("group-created"), 500);
+      }
+      pendingGroupFlashKey = null;
+    }
+  });
 }
 
 searchInput?.addEventListener("input", render);
