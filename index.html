@@ -21,7 +21,7 @@
     <main class="main">
       <header class="topbar">
         <h1>Apps dashboard</h1>
-        <div class="subtle">Clickable MVP: pinning, app groups, drag rearrange</div>
+        <div class="subtle">Clickable MVP: three-dots actions, folder grouping, drag rearrange</div>
       </header>
 
       <section class="search-row">
@@ -36,27 +36,18 @@
 
       <section class="panel">
         <div class="panel-head">
-          <h2>App groups</h2>
-          <button id="createGroup" class="link-btn" type="button">Create group</button>
-        </div>
-        <div id="groupsList" class="groups-list"></div>
-        <p id="groupsEmpty" class="hint">No groups yet. Use the three-dots menu on any app card to add apps into a group.</p>
-      </section>
-
-      <section class="panel">
-        <div class="panel-head">
           <h2>Pinned apps</h2>
           <button id="clearPins" class="link-btn" type="button">Clear pins</button>
         </div>
         <div id="pinnedGrid" class="apps-grid"></div>
-        <p id="pinnedEmpty" class="hint">No pinned apps yet. Use the three-dots menu on any app card below.</p>
+        <p id="pinnedEmpty" class="hint">No pinned apps yet. Use the three-dots menu on any app card.</p>
       </section>
 
       <section class="panel">
         <div class="panel-head">
           <h2>All apps</h2>
         </div>
-        <p class="hint">Drag and drop app cards to rearrange order.</p>
+        <p class="hint">Drag and drop cards to rearrange order. Create folders from the three-dots menu.</p>
         <div id="allAppsGrid" class="apps-grid"></div>
       </section>
     </main>

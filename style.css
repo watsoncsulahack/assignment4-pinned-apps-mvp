@@ -76,15 +76,11 @@ body { margin: 0; font-family: Segoe UI, system-ui, sans-serif; background: var(
   min-height: 120px;
   display: grid;
   grid-template-rows: auto 1fr auto;
+  user-select: none;
 }
 
-.app-card.dragging {
-  opacity: 0.55;
-}
-
-.app-card.drag-over {
-  outline: 2px dashed var(--accent);
-}
+.app-card.dragging { opacity: 0.55; }
+.app-card.drag-over { outline: 2px dashed var(--accent); }
 
 .card-top { display: flex; justify-content: flex-end; }
 
@@ -106,7 +102,7 @@ body { margin: 0; font-family: Segoe UI, system-ui, sans-serif; background: var(
   background: #fff;
   border: 1px solid var(--border);
   border-radius: 8px;
-  min-width: 148px;
+  min-width: 170px;
   box-shadow: 0 8px 22px rgba(0,0,0,0.12);
   z-index: 20;
   overflow: hidden;
@@ -122,10 +118,7 @@ body { margin: 0; font-family: Segoe UI, system-ui, sans-serif; background: var(
   font-size: 0.86rem;
 }
 
-.menu button:hover {
-  background: #f3f4f6;
-}
-
+.menu button:hover { background: #f3f4f6; }
 .hidden { display: none; }
 
 .app-icon {
@@ -141,44 +134,27 @@ body { margin: 0; font-family: Segoe UI, system-ui, sans-serif; background: var(
 
 .app-name { font-size: 0.86rem; color: #111827; }
 
-.groups-list {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: 10px;
-}
-
-.group-card {
-  border: 1px solid var(--border);
+.folder-preview {
+  width: 46px;
+  height: 46px;
   border-radius: 10px;
-  padding: 10px;
-  background: #fff;
-}
-
-.group-top {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
-}
-
-.group-name {
-  font-weight: 600;
-  font-size: 0.9rem;
-}
-
-.chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 8px;
-}
-
-.chip {
   border: 1px solid #d1d5db;
-  border-radius: 999px;
-  padding: 2px 8px;
-  font-size: 0.76rem;
-  background: #f9fafb;
+  background: #f3f4f6;
+  padding: 4px;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  grid-template-rows: repeat(2, 1fr);
+  gap: 3px;
+  margin: 2px 0 8px;
+}
+
+.mini-icon {
+  border-radius: 4px;
+  color: #fff;
+  font-size: 8px;
+  display: grid;
+  place-items: center;
+  font-weight: 700;
 }
 
 @media (max-width: 860px) {
