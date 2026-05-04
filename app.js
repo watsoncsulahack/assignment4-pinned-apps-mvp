@@ -26,12 +26,17 @@ const searchInput = document.getElementById("searchInput");
 const clearPinsBtn = document.getElementById("clearPins");
 
 const toastEl = document.getElementById("toast");
+const folderPopoverEl = document.getElementById("folderPopover");
+const folderPopoverTitleEl = document.getElementById("folderPopoverTitle");
+const folderPopoverAppsEl = document.getElementById("folderPopoverApps");
+const folderPopoverCloseBtn = document.getElementById("folderPopoverClose");
 
 let openMenuEl = null;
 let dragEntityKey = null;
 let pendingGroupFlashKey = null;
 let domPreviewDirty = false;
-let expandedGroupId = null;
+let openFolderGroupId = null;
+let openFolderAnchorKey = null;
 let toastTimer = null;
 
 const touchState = {
@@ -39,9 +44,12 @@ const touchState = {
   pressTimer: null,
   startX: 0,
   startY: 0,
+  currentX: 0,
+  currentY: 0,
   draggedKey: null,
   lastTargetKey: null,
-  lastIntent: null
+  lastIntent: null,
+  ghostEl: null
 };
 
 function appById(id) {
@@ -163,8 +171,71 @@ function showToast(text) {
   toastTimer = setTimeout(() => toastEl.classList.add("hidden"), 1300);
 }
 
-function toggleExpandedGroup(groupId) {
-  expandedGroupId = expandedGroupId === groupId ? null : groupId;
+function closeFolderPopover() {
+  openFolderGroupId = null;
+  openFolderAnchorKey = null;
+  folderPopoverEl?.classList.add("hidden");
+}
+
+function positionFolderPopover() {
+  if (!folderPopoverEl || !openFolderAnchorKey) return;
+  const anchor = findCardByKey(openFolderAnchorKey)?.querySelector(".folder-preview");
+  if (!anchor) return;
+
+  const rect = anchor.getBoundingClientRect();
+  const popW = Math.min(360, window.innerWidth - 24);
+  const popH = Math.min(360, window.innerHeight - 24);
+
+  let left = rect.left + (rect.width / 2) - (popW / 2);
+  let top = rect.bottom + 10;
+
+  if (left < 12) left = 12;
+  if (left + popW > window.innerWidth - 12) left = window.innerWidth - 12 - popW;
+  if (top + popH > window.innerHeight - 12) {
+    top = rect.top - popH - 10;
+    if (top < 12) top = 12;
+  }
+
+  folderPopoverEl.style.left = `${Math.round(left)}px`;
+  folderPopoverEl.style.top = `${Math.round(top)}px`;
+}
+
+function renderFolderPopover() {
+  if (!folderPopoverEl || !folderPopoverTitleEl || !folderPopoverAppsEl) return;
+  if (!openFolderGroupId) {
+    folderPopoverEl.classList.add("hidden");
+    return;
+  }
+
+  const group = getGroups().find(g => g.id === openFolderGroupId);
+  if (!group) {
+    closeFolderPopover();
+    return;
+  }
+
+  folderPopoverTitleEl.textContent = group.name;
+  folderPopoverAppsEl.innerHTML = "";
+  (group.appIds || []).map(appById).filter(Boolean).forEach(app => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "folder-app-btn";
+    btn.textContent = app.name;
+    btn.addEventListener("click", () => showToast(`Opening ${app.name}`));
+    folderPopoverAppsEl.appendChild(btn);
+  });
+
+  folderPopoverEl.classList.remove("hidden");
+  positionFolderPopover();
+}
+
+function toggleFolderPopover(groupId, anchorKey) {
+  if (openFolderGroupId === groupId) {
+    closeFolderPopover();
+    return;
+  }
+  openFolderGroupId = groupId;
+  openFolderAnchorKey = anchorKey;
+  renderFolderPopover();
 }
 
 function buildFolderPreview(group) {
@@ -233,7 +304,7 @@ function createGroupMenu(entity, pins, groups, rerender) {
 }
 
 function clearDropClasses() {
-  document.querySelectorAll(".app-card").forEach(c => c.classList.remove("drop-group"));
+  document.querySelectorAll(".app-card").forEach(c => c.classList.remove("drop-group", "drop-reorder"));
 }
 
 function findCardByKey(key) {
@@ -372,7 +443,7 @@ function addAppToExistingGroup(draggedAppId, targetGroupId) {
 function ungroupById(groupId) {
   const groups = getGroups().filter(g => g.id !== groupId);
   saveGroups(groups);
-  if (expandedGroupId === groupId) expandedGroupId = null;
+  if (openFolderGroupId === groupId) closeFolderPopover();
 }
 
 function computeDropIntent(targetEntity, draggedEntity, event) {
@@ -418,10 +489,34 @@ function executeDropAction(draggedKey, targetEntity, intent, rerender) {
   rerender();
 }
 
+function removeTouchGhost() {
+  if (touchState.ghostEl?.parentNode) touchState.ghostEl.parentNode.removeChild(touchState.ghostEl);
+  touchState.ghostEl = null;
+}
+
+function moveTouchGhost(x, y) {
+  if (!touchState.ghostEl) return;
+  touchState.ghostEl.style.left = `${Math.round(x)}px`;
+  touchState.ghostEl.style.top = `${Math.round(y)}px`;
+}
+
+function createTouchGhost(entity) {
+  removeTouchGhost();
+  const ghost = document.createElement("div");
+  ghost.className = "touch-ghost";
+  ghost.textContent = entity.type === "app" ? entity.app.name : entity.group.name;
+  document.body.appendChild(ghost);
+  touchState.ghostEl = ghost;
+  moveTouchGhost(touchState.currentX || touchState.startX, touchState.currentY || touchState.startY);
+}
+
 function clearTouchState() {
   if (touchState.pressTimer) clearTimeout(touchState.pressTimer);
+  removeTouchGhost();
   touchState.pressTimer = null;
   touchState.active = false;
+  touchState.currentX = 0;
+  touchState.currentY = 0;
   touchState.draggedKey = null;
   touchState.lastTargetKey = null;
   touchState.lastIntent = null;
@@ -436,6 +531,7 @@ function makeCard(entity, pins, groups, qActive, rerender) {
   card.addEventListener("dragstart", (e) => {
     dragEntityKey = entity.key;
     domPreviewDirty = false;
+    closeFolderPopover();
     e.dataTransfer.setData("text/plain", entity.key);
     closeMenu();
     card.classList.add("dragging");
@@ -464,12 +560,14 @@ function makeCard(entity, pins, groups, qActive, rerender) {
       return;
     }
 
+    card.classList.add("drop-reorder");
+
     if ((intent === "before" || intent === "after") && previewReorderInDOM(dragEntityKey, entity.key, intent)) {
       domPreviewDirty = true;
     }
   });
 
-  card.addEventListener("dragleave", () => card.classList.remove("drop-group"));
+  card.addEventListener("dragleave", () => card.classList.remove("drop-group", "drop-reorder"));
 
   card.addEventListener("drop", (e) => {
     if (!dragEntityKey || qActive || dragEntityKey === entity.key) return;
@@ -487,20 +585,27 @@ function makeCard(entity, pins, groups, qActive, rerender) {
 
     touchState.startX = e.clientX;
     touchState.startY = e.clientY;
+    touchState.currentX = e.clientX;
+    touchState.currentY = e.clientY;
     touchState.draggedKey = entity.key;
 
     touchState.pressTimer = setTimeout(() => {
       touchState.active = true;
       dragEntityKey = entity.key;
       domPreviewDirty = false;
+      closeFolderPopover();
       closeMenu();
       const draggedCard = findCardByKey(entity.key);
       if (draggedCard) draggedCard.classList.add("touch-dragging");
+      createTouchGhost(entity);
     }, 230);
   });
 
   card.addEventListener("pointermove", (e) => {
     if (e.pointerType !== "touch") return;
+
+    touchState.currentX = e.clientX;
+    touchState.currentY = e.clientY;
 
     if (!touchState.active) {
       const dx = Math.abs(e.clientX - touchState.startX);
@@ -510,6 +615,7 @@ function makeCard(entity, pins, groups, qActive, rerender) {
     }
 
     e.preventDefault();
+    moveTouchGhost(e.clientX, e.clientY);
 
     const el = document.elementFromPoint(e.clientX, e.clientY);
     const targetCard = el?.closest(".app-card");
@@ -537,6 +643,8 @@ function makeCard(entity, pins, groups, qActive, rerender) {
       targetCard.classList.add("drop-group");
       return;
     }
+
+    targetCard.classList.add("drop-reorder");
 
     if ((intent === "before" || intent === "after") && previewReorderInDOM(touchState.draggedKey, targetKey, intent)) {
       domPreviewDirty = true;
@@ -627,28 +735,10 @@ function makeCard(entity, pins, groups, qActive, rerender) {
     });
 
     folder.addEventListener("click", () => {
-      toggleExpandedGroup(entity.group.id);
-      rerender();
+      toggleFolderPopover(entity.group.id, entity.key);
     });
 
     card.append(folder, name, ungroupBtn);
-
-    if (expandedGroupId === entity.group.id) {
-      const inline = document.createElement("div");
-      inline.className = "folder-inline-list";
-      (entity.group.appIds || []).map(appById).filter(Boolean).forEach(app => {
-        const appBtn = document.createElement("button");
-        appBtn.type = "button";
-        appBtn.className = "folder-app-btn";
-        appBtn.textContent = app.name;
-        appBtn.addEventListener("click", (ev) => {
-          ev.stopPropagation();
-          showToast(`Opening ${app.name}`);
-        });
-        inline.appendChild(appBtn);
-      });
-      card.appendChild(inline);
-    }
   }
 
   return card;
@@ -672,6 +762,7 @@ function render() {
   unpinned.forEach(e => allAppsGrid.appendChild(makeCard(e, pins, groups, qActive, rerender)));
 
   pinnedEmpty.style.display = pinned.length ? "none" : "block";
+  renderFolderPopover();
 
   requestAnimationFrame(() => {
     animateReflow(prevRects);
@@ -693,11 +784,21 @@ clearPinsBtn?.addEventListener("click", () => {
   render();
 });
 
+folderPopoverCloseBtn?.addEventListener("click", closeFolderPopover);
+
+document.addEventListener("pointerdown", (e) => {
+  if (!openFolderGroupId) return;
+  const t = e.target;
+  if (folderPopoverEl?.contains(t)) return;
+  if (t?.closest?.(".folder-preview")) return;
+  closeFolderPopover();
+});
+
+window.addEventListener("resize", positionFolderPopover);
+window.addEventListener("scroll", positionFolderPopover, true);
+
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && expandedGroupId) {
-    expandedGroupId = null;
-    render();
-  }
+  if (e.key === "Escape") closeFolderPopover();
 });
 
 document.addEventListener("click", () => closeMenu());

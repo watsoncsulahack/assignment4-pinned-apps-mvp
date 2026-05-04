@@ -85,12 +85,19 @@ body { margin: 0; font-family: Segoe UI, system-ui, sans-serif; background: var(
   outline: 2px solid #22c55e;
   background: #f0fdf4;
 }
+.app-card.drop-reorder {
+  outline: 2px solid #60a5fa;
+  background: #eff6ff;
+}
 .app-card.group-created {
   animation: groupPop 0.45s ease;
 }
 
 .app-card.touch-dragging {
-  opacity: 0.65;
+  opacity: 0.75;
+  transform: scale(1.03);
+  box-shadow: 0 10px 24px rgba(0,0,0,0.18);
+  z-index: 10;
 }
 
 .card-top { display: flex; justify-content: flex-end; }
@@ -192,11 +199,49 @@ body { margin: 0; font-family: Segoe UI, system-ui, sans-serif; background: var(
   background: #f9fafb;
 }
 
-.folder-inline-list {
+.folder-popover {
+  position: fixed;
+  z-index: 80;
+  width: min(360px, calc(100vw - 24px));
+  max-height: min(360px, calc(100vh - 24px));
+  overflow: auto;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 16px 40px rgba(0,0,0,0.22);
+  padding: 10px;
+}
+
+.folder-popover-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.folder-popover-head h3 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.folder-popover-apps {
   display: grid;
-  grid-template-columns: 1fr;
-  gap: 6px;
-  margin-top: 8px;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 8px;
+}
+
+.touch-ghost {
+  position: fixed;
+  pointer-events: none;
+  z-index: 90;
+  border: 1px solid #bfdbfe;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 10px 24px rgba(0,0,0,0.2);
+  padding: 8px 10px;
+  font-size: 0.8rem;
+  color: #111827;
+  transform: translate(-50%, -50%);
 }
 
 .toast {
